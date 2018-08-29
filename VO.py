@@ -1,15 +1,17 @@
+# -*- coding: utf-8 -*-
+
 import cv2
 import os.path
 import glob
 import numpy as np
 import time
 
-def featureTracking(img1, img2, points1, points2, status):
-    winSize = [21, 21]
+def featureTracking(img1, img2, points1):
+    winSize = (21, 21)
     err = []
     termCrit = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 30, 0.01)
 
-    features, status, err = cv2.calcOpticalFlowPyrLK(img1, img2, points1, None, winSize, maxLevel=2, criteria=termCrit, flags=0, minEigTresolf=0.001)
+    features, status, err = cv2.calcOpticalFlowPyrLK(img1, img2, points1, None, winSize, maxLevel=2, criteria=termCrit, flags=0, minEigThreshold=0.001)
 
     f = np.zeros([len(status[status == 1]), 1, 2], np.float32)  #prazdna pole, naplnovat, kdyz bude 1
     pf = np.zeros([len(status[status == 1]), 1, 2], np.float32)
@@ -34,7 +36,7 @@ def featureDetection(img):
     kp2 = kp2.astype(np.float32)
     return kp2
 
-def main(arcg, argv):
+def main():
 
     min_num_feat = 2000
     scale = 1
@@ -46,7 +48,7 @@ def main(arcg, argv):
     ts.append(tf)
     Rs.append(Rf)
 
-    fns = sorted(glob.glob("./image0/*.png"))
+    fns = sorted(glob.glob("./image_0/*.png"))
     focal = 718.8560                        # ohnisko
     pp = (607.1928, 185.2157)               # stred roviny promitani, stred obrazku
     cam_matrix = np.zeros([3, 3], dtype = np.float)     # matice kamery
@@ -56,39 +58,40 @@ def main(arcg, argv):
     cam_matrix[1, 2] = pp[1]
     cam_matrix[2, 2] = 1
 
-    h = 0
     points1 = []
     points2 = []
-    status = []
 
-    first = cv2.imread(fns[0], 0)
-    points = featureDetection(first)
+    img_1 = cv2.imread(fns[0], 0)
+    points1 = featureDetection(img_1)
 
     for fn in fns[1:]:
-        prev = fns[h]
-        img_1 = cv2.imread(fn, 0)
-        img_2 = cv2.imread(prev, 0)
-        featureDetection(img_1)
-        featureTracking(img_1, img_2, points1, points2, status)
-        essMat = cv2.findEssentialMat(points2, points1, focal, pp, RANSAC, 0.999, 1.0, mask)
-        cv2.recoverPose(essMat, points2, points1, R, t, focal, pp, mask)
-        h = h+1
+        img_2 = cv2.imread(fn, 0)
+        points2, points1, err =  featureTracking(img_2, img_1, points1)
+        essMat, mask = cv2.findEssentialMat(points2, points1, focal, pp, cv2.RANSAC, 0.999, 1.0)
+        retval, R, t, mask = cv2.recoverPose(essMat, points2, points1, cam_matrix)
+        
+        ts.append(t)
+        Rs.append(R)
+        tf = tf + (np.dot(Rf, t))
+        Rf = np.dot(R, Rf)
 
-        Rf = R
-        tf = t
+        print(tf)
 
-        # mask = camMatrix???
+        if len(points1) < min_num_feat:
+            points1 = featureDetection(img_1)
+            points2, points1, err = featureTracking(img_2, img_1, points1)
 
-    if os.path.getsize(fileName1)<0 & os.path.getsize(fileName1):
-        print("Error reading images")
+        img_1 = img_2.copy()
+        points1 = points2
 
+        cv2.waitKey(1)
 
-
-    cv2.waitKey(1)
+if __name__ == "__main__":
+    main()
 
 # tracking, essential matrix, recover pose
 
-# scale neřeším, místo něj tam dám 1
+# scale neím, místo něj tam dám 1
 # zatím neřeším ani vykreslování
 # t je změna pozice
 # na konci je důležité cv2.waitKey(1)
